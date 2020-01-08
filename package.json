@@ -1,0 +1,18 @@
+{
+  "name": "specky-service",
+  "version": "1.0.0",
+  "description": "http helper wrapper for go backend models ",
+  "main": "index.js",
+  "scripts": {
+  },
+  "repository": {
+    "type": "git",
+    "url": "github.com/nerdynz/specky-service"
+  },
+  "keywords": [
+    "Vue",
+    "Models"
+  ],
+  "author": "Joshua Cave",
+  "license": "ISC"
+}
