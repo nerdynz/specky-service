@@ -153,31 +153,37 @@ export default class Service {
 
   init () {
     if (!this.schema) {
-      this.http.get(this.schemaURL).then((response) => {
-        this.schema = response.data
-        this.isReady = true
-        if (this.schema.IsSocketsEnabled) {
-          let ws = glue(host, wsOptions)
-          window.socket = ws
-          this.ws = ws
-          this.ws.onMessage((msg) => {
-            if (this.store.state.auth.isValid) {
-              if (msg === 'connected') {
-                console.log('Websocket connection active') // eslint-disable-line
-              } else if (msg.indexOf('ping:') === 0) {
-                this.ws.send('pong: ' + this.store.state.auth.details.token)
-              } else {
-                msg = JSON.parse(msg)
-                let type = msg.Type
-                let data = msg.Data
-                if (type && data) {
-                  this.eventBus.trigger(type, data)
+      let lsSchema = window.localStorage.getItem('schema')
+      if (lsSchema) {
+        this.schema = JSON.parse(lsSchema)
+      } else {
+        this.http.get(this.schemaURL).then((response) => {
+          this.schema = response.data
+          window.localStorage.setItem('schema', JSON.stringify(response.data))
+          this.isReady = true
+          if (this.schema.IsSocketsEnabled) {
+            let ws = glue(host, wsOptions)
+            window.socket = ws
+            this.ws = ws
+            this.ws.onMessage((msg) => {
+              if (this.store.state.auth.isValid) {
+                if (msg === 'connected') {
+                  console.log('Websocket connection active') // eslint-disable-line
+                } else if (msg.indexOf('ping:') === 0) {
+                  this.ws.send('pong: ' + this.store.state.auth.details.token)
+                } else {
+                  msg = JSON.parse(msg)
+                  let type = msg.Type
+                  let data = msg.Data
+                  if (type && data) {
+                    this.eventBus.trigger(type, data)
+                  }
                 }
               }
-            }
-          })
-        }
-      })
+            })
+          }
+        })
+      }
     }
   }
 
