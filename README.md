@@ -1,1 +1,7 @@
-### Range Date Picker loosely based off AirBNB's date picker, with 0 external dependencies.
+# Specky Service
+
+Javascript library for dealing with Golang Models via REST
+
+CRUD & paging
+
+Untested support for pubsub websockets
