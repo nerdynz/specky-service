@@ -71,9 +71,12 @@ class Event {
 // store.state.auth.details.
 export default class Service {
   constructor (options) {
+    if (!options) options = {}
+    if (!options.env) options.env = {}
+    this.options = options
     this.http = options.http
     this.ws = options.ws
-    this.schemaURL = options.schemaURL || '/api/v1/schema'
+    this.schemaURL = options.schemaURL || options.env.schemaURL || options.env.apiURL || `/api/v1/schema`
     this.store = options.store
     /* it is better to pass a preloaded schema in, otherwise we might hit a race condition
        of the schema not being loaded before a service is called.
@@ -82,12 +85,15 @@ export default class Service {
     this.schema = window.websiteSchema || options.schema
     this.isReady = false
     this.eventBus = new Event()
+    this.isUsingULIDAsPK = options.isUsingULIDAsPK || options.env.isUsingULIDAsPK || false
   }
 
-  static create (options) {
+  static create (options, context) {
     serviceGlobal = new Service(options)
     serviceGlobal.init()
+    console.log('opts', options)
     return {
+      loading: true,
       UUID: function () {
         return uuidv4()
       },
@@ -101,10 +107,12 @@ export default class Service {
           record.UUID = uuidv4()
         } else if (Object.prototype.hasOwnProperty.call(record, 'ULID')) {
           record.ULID = ulid()
+        } else if (Object.prototype.hasOwnProperty.call(record, `${type}ULID`)) {
+          record[`${type}ULID`] = ulid()
         } else {
           record.UniqueID = ulid()
         }
-        checkSiteID(record, siteID)
+        checkSiteID(record, siteID, serviceGlobal.isUsingULIDAsPK)
         return record
       },
       retrieve: function (type, recordID, ...qs) {
@@ -119,8 +127,8 @@ export default class Service {
       },
       remove: function (type, recordID) {
         type = uppercaseFirst(type)
-        if (typeof (recordID) === 'object') {
-          recordID = recordID[type + 'ID']
+        if (typeof (recordID) === 'object') { // its actually the whole record
+          recordID = getIDField(type, recordID, serviceGlobal.isUsingULIDAsPK)
         }
         return serviceGlobal.remove(type, recordID)
       },
@@ -145,9 +153,9 @@ export default class Service {
   }
 
   static install (Vue, options) {
+    console.log('opts', options)
     serviceGlobal = new Service(options)
     serviceGlobal.init()
-
     Vue.prototype.$service = this.create
   }
 
@@ -155,7 +163,12 @@ export default class Service {
     if (!this.schema) {
       let lsSchema = window.localStorage.getItem('schema')
       if (lsSchema) {
-        this.schema = JSON.parse(lsSchema)
+        let schema = JSON.parse(lsSchema)
+        if (typeof schema === 'object') {
+          this.schema = schema
+        } else {
+          window.localStorage.setItem('schema', '')
+        }
       } else {
         this.http.get(this.schemaURL).then((response) => {
           this.schema = response.data
@@ -199,12 +212,20 @@ export default class Service {
       qs = ''
     }
     // record = cleanDates(record)
-    return this.http.post(`/api/v1/${type.toLowerCase()}/create${qs}`, record)
-      .then((response) => { return Promise.resolve(response.data) })
-      .catch((error) => { return Promise.reject(error) })
+    this.loading = true
+    return this.http.post(`${this.options.env.apiURL}/v1/${type.toLowerCase()}/create${qs}`, record)
+      .then((response) => { 
+        this.loading = false
+        return Promise.resolve(response.data) 
+      })
+      .catch((error) => { 
+        this.loading = false
+        return Promise.reject(error) 
+      })
   }
 
   retrieve (type, recordID, qs) {
+    console.log('xxx', this)
     if (!qs) {
       qs = ''
     }
@@ -213,10 +234,17 @@ export default class Service {
     } else {
       recordID = ''
     }
-    let url = `/api/v1/${type.toLowerCase()}/retrieve${recordID}${qs}`
+    let url = `${this.options.env.apiURL}/v1/${type.toLowerCase()}/retrieve${recordID}${qs}`
+    this.loading = true
     return this.http.get(url)
-      .then((response) => { return Promise.resolve(response.data) })
-      .catch((error) => { return Promise.reject(error) })
+      .then((response) => { 
+        this.loading = false
+        return Promise.resolve(response.data) 
+      })
+      .catch((error) => { 
+        this.loading = false
+        return Promise.reject(error) 
+      })
   }
 
   paged (type, sort, direction, limit, pageNum, qs) {
@@ -235,10 +263,17 @@ export default class Service {
     if (typeof (limit) === 'undefined') {
       limit = 10
     }
-    let url = `/api/v1/${type.toLowerCase()}/paged/${toSnakeCase(sort)}/${direction.toLowerCase()}/limit/${limit}/pagenum/${pageNum}${qs}`
+    let url = `${this.options.env.apiURL}/v1/${type.toLowerCase()}/paged/${toSnakeCase(sort)}/${direction.toLowerCase()}/limit/${limit}/pagenum/${pageNum}${qs}`
+    this.loading = true
     return this.http.get(url)
-      .then((response) => { return Promise.resolve(response.data) })
-      .catch((error) => { return Promise.reject(error) })
+      .then((response) => { 
+        this.loading = false
+        return Promise.resolve(response.data) 
+      })
+      .catch((error) => { 
+        this.loading = false
+        return Promise.reject(error) 
+      })
   }
 
   update (type, record, qs) {
@@ -246,19 +281,35 @@ export default class Service {
     if (!qs) {
       qs = ''
     }
-    return this.http.put(`/api/v1/${type.toLowerCase()}/update/${record[type + 'ID']}${qs}`, record)
-      .then((response) => { return Promise.resolve(response.data) })
-      .catch((error) => { return Promise.reject(error) })
+    this.loading = true
+    let idField = getIDField(type, record, this.isUsingULIDAsPK)
+    return this.http.put(`${this.options.env.apiURL}/v1/${type.toLowerCase()}/update/${idField}${qs}`, record)
+      .then((response) => { 
+        this.loading = false
+        return Promise.resolve(response.data) 
+      })
+      .catch((error) => { 
+        this.loading = false
+        return Promise.reject(error) 
+      })
   }
 
   remove (type, recordID) {
     let promise = Promise.resolve(true)
     // let recordID = record[type + 'ID']
-    if (recordID > 0) {
-      promise = this.http.delete(`/api/v1/${type.toLowerCase()}/delete/${recordID}`)
-        .then((response) => { return Promise.resolve(true) })
-        .catch((error) => { return Promise.reject(error) })
+    if (typeof(recordID) === "undefined") {
+      throw new Error("No record id to delete")
     }
+    this.loading = true
+    promise = this.http.delete(`${this.options.env.apiURL}/v1/${type.toLowerCase()}/delete/${recordID}`)
+      .then((response) => { 
+        this.loading = false
+        return Promise.resolve(true) 
+      })
+      .catch((error) => { 
+        this.loading = false
+        return Promise.reject(error) 
+      })
     return promise
   }
 
@@ -325,13 +376,24 @@ function makeQs (qs) {
   return str
 }
 
-function checkSiteID (record, siteID) {
-  if ('SiteID' in record) {
-    if (siteID) {
-      record.SiteID = siteID
+function checkSiteID (record, siteID, isUsingULIDAsPK) {
+  if (isUsingULIDAsPK) {
+    if ('SiteULID' in record) {
+      if (siteID) {
+        record.SiteULID = siteID
+      }
+      if (typeof (record.SiteULID) === 'undefined' || record.SiteULID == "") {
+        throw new Error('SiteULID not set')
+      }
     }
-    if (typeof (record.SiteID) === 'undefined' || record.SiteID <= 0) {
-      throw new Error('SiteID not set')
+  } else {
+    if ('SiteID' in record) {
+      if (siteID) {
+        record.SiteID = siteID
+      }
+      if (typeof (record.SiteID) === 'undefined' || record.SiteID <= 0) {
+        throw new Error('SiteID not set')
+      }
     }
   }
 }
@@ -353,3 +415,12 @@ function checkSiteID (record, siteID) {
 //   }
 //   return obj
 // }
+
+
+function getIDField(type, record, isUsingULIDAsPK) {
+  console.log('tyep', type, record, isUsingULIDAsPK)
+  if (isUsingULIDAsPK) {
+    return record[type + 'ULID']
+  }
+  return record[type + 'ID']
+}

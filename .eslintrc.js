@@ -1,23 +1,20 @@
 module.exports = {
   root: true,
-  parser: 'babel-eslint',
-  parserOptions: {
-    sourceType: 'module'
+  env: {
+    browser: true,
+    node: true
   },
-  // https://github.com/feross/standard/blob/master/RULES.md#javascript-standard-style
-  extends: 'standard',
-  // required to lint *.vue files
-  plugins: [
+  parserOptions: {
+    parser: 'babel-eslint'
+  },
+  extends: [
+    'standard'
   ],
-
   // add your custom rules here
-  'rules': {
-    // allow paren-less arrow functions
-    'arrow-parens': 0,
-    // allow async-await
-    'generator-star-spacing': 0,
-    // allow debugger during development
-    'no-debugger': process.env.NODE_ENV === 'production' ? 2 : 0,
-    'prefer-const': 0
+  rules: {
+    'prefer-const': 0,
+    'vue/attributes-order': 0,
+    'vue/require-default-prop': 0,
+    'no-console': 0
   }
 }
